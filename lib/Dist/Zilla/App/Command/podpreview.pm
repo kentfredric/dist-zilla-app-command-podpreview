@@ -6,10 +6,6 @@ use strict;
 use warnings;
 use 5.010;
 use Dist::Zilla::App -command;
-use Moose::Autobox;
-use App::PodPreview qw(podpreview);
-use List::Util      qw(first);
-use File::Temp      qw(tempfile);
 use Carp            qw(carp croak);
 
 sub abstract { "preview munged pod in browser" }
@@ -34,26 +30,29 @@ sub execute
 
     $self->app->chrome->logger->mute;
 
-    $_->before_build for $self->zilla->plugins_with(-BeforeBuild)->flatten;
-    $_->gather_files for $self->zilla->plugins_with(-FileGatherer)->flatten;
-    $_->prune_files  for $self->zilla->plugins_with(-FilePruner)->flatten;
-    $_->munge_files  for $self->zilla->plugins_with(-FileMunger)->flatten;
+    $_->before_build for @{ $self->zilla->plugins_with(-BeforeBuild) };
+    $_->gather_files for @{ $self->zilla->plugins_with(-FileGatherer) };
+    $_->prune_files  for @{ $self->zilla->plugins_with(-FilePruner) };
+    $_->munge_files  for @{ $self->zilla->plugins_with(-FileMunger) };
 
     my $module = $arg->[0];
     my $colons = $module =~ s/::/\//g;
     my @filenames = "lib/$module.pm";
     push @filenames, "bin/$module", $module if !$colons;
 
-    my $object = first {
+    require List::Util;
+    my $object = List::Util::first {
         my $name = $_->name;
-        first { $name eq $_ } @filenames
+        List::Util::first { $name eq $_ } @filenames
     } @{ $self->zilla->files };
     croak "Cannot find object " . $arg->[0] unless $object;
 
-    my ($fh, $filename) = tempfile();
+    require File::Temp;
+    my ($fh, $filename) = File::Temp::tempfile();
     print $fh $object->content or croak $!;
     close $fh or croak $!;
-    podpreview($filename);
+    require App::PodPreview;
+    App::PodPreview::podpreview($filename);
 }
 
 1;
